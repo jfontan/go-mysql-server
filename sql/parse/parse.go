@@ -26,6 +26,11 @@ func Parse(s string) (sql.Node, error) {
 		s = s[:len(s)-1]
 	}
 
+	set := regexp.MustCompile(`^(set|show session)\s+(.*)`).FindStringSubmatch(strings.ToLower(s))
+	if len(set) >= 1 {
+		return plan.NewNoop(), nil
+	}
+
 	t := regexp.MustCompile(`^describe\s+table\s+(.*)`).FindStringSubmatch(strings.ToLower(s))
 	if len(t) == 2 && t[1] != "" {
 		return plan.NewDescribe(plan.NewUnresolvedTable(t[1])), nil
