@@ -52,6 +52,7 @@ func (h *Handler) ComQuery(
 
 	defer done()
 
+	println("QUERY", c.ConnectionID, query)
 	schema, rows, err := h.e.Query(session, query)
 	if err != nil {
 		return err
