@@ -59,7 +59,12 @@ func (s *SessionManager) NewSession(conn *mysql.Conn) (sql.Session, DoneFunc, er
 
 	s.mu.Lock()
 	s.connSessions[conn.ConnectionID] = append(s.connSessions[conn.ConnectionID], id)
+	c, ok := s.sessions[id]
+	if ok {
+		println("cancel function already set!!", id.String(), cancel, c)
+	}
 	s.sessions[id] = cancel
+	// cancel()
 	s.mu.Unlock()
 
 	println("  cancel func", conn.ConnectionID, id.String(), cancel)
@@ -71,18 +76,21 @@ func (s *SessionManager) NewSession(conn *mysql.Conn) (sql.Session, DoneFunc, er
 
 		println("Session function", conn.ConnectionID, id.String())
 
-		delete(s.sessions, id)
+		println("  cancel func inside func", conn.ConnectionID, id.String(), cancel)
+		cancel()
+
+		// delete(s.sessions, id)
 		ids := s.connSessions[conn.ConnectionID]
 		for i, sessID := range ids {
 			if sessID == id {
-				println("  func context cancel", conn.ConnectionID, id.String())
+				println("  func context cancel", conn.ConnectionID, id.String(), i)
 				session := s.sessions[id]
 				if session != nil {
 					println("  calling cancel func", session)
 					session()
 				}
-				delete(s.sessions, id)
-				s.connSessions[conn.ConnectionID] = append(ids[:i], ids[i+1:]...)
+				// delete(s.sessions, id)
+				// s.connSessions[conn.ConnectionID] = append(ids[:i], ids[i+1:]...)
 				break
 			}
 		}
@@ -102,9 +110,17 @@ func (s *SessionManager) CloseConn(conn *mysql.Conn) {
 		println("  context cancel", conn.ConnectionID, id.String())
 		session := s.sessions[id]
 		if session != nil {
+			println("session is not nil")
 			session()
 		}
 		delete(s.sessions, id)
 	}
 	delete(s.connSessions, conn.ConnectionID)
 }
+
+// func (s *SessionManager) CancelQueries(conn *mysql.Conn) {
+// 	s.mu.Lock()
+// 	defer s.mu.Unlock()
+
+// 	println("CloseConn", conn.ConnectionID)
+// }
