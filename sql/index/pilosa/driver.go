@@ -114,6 +114,7 @@ func (d *Driver) Create(
 		return nil, err
 	}
 
+	d.holder = pilosa.NewHolder()
 	d.holder.Path = d.pilosaDirPath(db, table)
 	idx, err := d.holder.CreateIndexIfNotExists(
 		indexName(db, table),
@@ -144,6 +145,7 @@ func (d *Driver) LoadAll(db, table string) ([]sql.Index, error) {
 		root    = filepath.Join(d.root, db, table)
 	)
 
+	d.holder = pilosa.NewHolder()
 	d.holder.Path = d.pilosaDirPath(db, table)
 	if _, err := os.Stat(d.holder.Path); err != nil {
 		if os.IsNotExist(err) {
