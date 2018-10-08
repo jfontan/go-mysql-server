@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/pilosa/pilosa"
+	"github.com/sanity-io/litter"
 	errors "gopkg.in/src-d/go-errors.v1"
 	"gopkg.in/src-d/go-mysql-server.v0/sql"
 )
@@ -87,9 +88,15 @@ func (l *indexLookup) values(p sql.Partition) (*pilosa.Row, error) {
 
 	defer l.mapping.close()
 
+	litter.Dump(l.index)
+
 	var row *pilosa.Row
 	for i, expr := range l.expressions {
 		field := l.index.Field(fieldName(l.id, expr, p))
+		println("field", i, l.id, expr, p.Key(), fieldName(l.id, expr, p))
+		litter.Dump(p)
+		litter.Dump(field)
+		litter.Dump(l)
 		rowID, err := l.mapping.rowID(field.Name(), l.keys[i])
 		if err == io.EOF {
 			continue
@@ -133,6 +140,8 @@ func (l *indexLookup) values(p sql.Partition) (*pilosa.Row, error) {
 func (l *indexLookup) Values(p sql.Partition) (sql.IndexValueIter, error) {
 	l.index.Open()
 	defer l.index.Close()
+
+	litter.Dump(l)
 
 	row, err := l.values(p)
 	if err != nil {

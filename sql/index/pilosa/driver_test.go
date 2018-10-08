@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pilosa/pilosa"
+	"github.com/sanity-io/litter"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/src-d/go-mysql-server.v0/sql"
 	"gopkg.in/src-d/go-mysql-server.v0/sql/expression"
@@ -225,8 +226,15 @@ func TestLoadCorruptedIndex(t *testing.T) {
 	_, err := d.Create("db", "table", "id", nil, nil)
 	require.NoError(err)
 
-	_, err = d.loadIndex("db", "table", "id")
+	holder := pilosa.NewHolder()
+	holder.Path = d.pilosaDirPath("db", "table")
+	err = holder.Open()
+	require.NoError(err)
+	defer holder.Close()
+
+	_, err = d.loadIndex(holder, "db", "table", "id")
 	require.Error(err)
+	println("error", err.Error())
 	require.True(errCorruptedIndex.Is(err))
 
 	_, err = os.Stat(processingFile)
@@ -407,21 +415,43 @@ func TestIntersection(t *testing.T) {
 		location:    offsetLocation,
 	}
 
+	println("# before save")
+	conc2 := sqlIdxLang.(*pilosaIndex)
+	litter.Dump(conc2.index.Fields())
+
+	println("# SAVE LANG")
 	err = d.Save(ctx, sqlIdxLang, itLang)
 	require.NoError(err)
 
+	println("# SAVE PATH")
 	err = d.Save(ctx, sqlIdxPath, itPath)
 	require.NoError(err)
 
+	println("# GET LANG")
 	lookupLang, err := sqlIdxLang.Get(itLang.records[0][0].values...)
 	require.NoError(err)
+	println("# GET PATH")
 	lookupPath, err := sqlIdxPath.Get(itPath.records[0][itPath.total-1].values...)
 	require.NoError(err)
+
+	conc := sqlIdxPath.(*pilosaIndex)
+	litter.Dump(conc.index.Fields())
+	conc.index.Open()
+
+	concl := sqlIdxLang.(*pilosaIndex)
+	litter.Dump(concl.index.Fields())
+	concl.index.Open()
+
+	idx := lookupPath.(*indexLookup)
+	litter.Dump(idx.index.Fields())
+
+	litter.Dump(lookupPath)
 
 	m, ok := lookupLang.(sql.Mergeable)
 	require.True(ok)
 	require.True(m.IsMergeable(lookupPath))
 
+	println("# INTERSECTION PATH")
 	interLookup, ok := lookupLang.(sql.SetOperations)
 	require.True(ok)
 	interIt, err := interLookup.Intersection(lookupPath).Values(testPartition(0))
@@ -431,6 +461,7 @@ func TestIntersection(t *testing.T) {
 	require.True(err == io.EOF)
 	require.NoError(interIt.Close())
 
+	println("# GET LANG")
 	lookupLang, err = sqlIdxLang.Get(itLang.records[0][0].values...)
 	require.NoError(err)
 	lookupPath, err = sqlIdxPath.Get(itPath.records[0][0].values...)

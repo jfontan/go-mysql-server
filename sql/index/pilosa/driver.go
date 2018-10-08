@@ -67,13 +67,9 @@ type (
 		timeMapping time.Duration
 	}
 
-	tableMap map[string]*pilosa.Holder
-	dbMap    map[string]tableMap
-
 	// Driver implements sql.IndexDriver interface.
 	Driver struct {
-		root    string
-		holders dbMap
+		root string
 	}
 )
 
@@ -81,8 +77,7 @@ type (
 // which satisfies sql.IndexDriver interface
 func NewDriver(root string) *Driver {
 	return &Driver{
-		root:    root,
-		holders: make(dbMap),
+		root: root,
 	}
 }
 
@@ -117,7 +112,7 @@ func (d *Driver) Create(
 		return nil, err
 	}
 
-	holder := d.holder(db, table)
+	holder := pilosa.NewHolder()
 	holder.Path = d.pilosaDirPath(db, table)
 	idx, err := holder.CreateIndexIfNotExists(
 		indexName(db, table),
@@ -126,6 +121,7 @@ func (d *Driver) Create(
 	if err != nil {
 		return nil, err
 	}
+	defer holder.Close()
 
 	mapping := newMapping(d.mappingFilePath(db, table, id))
 
@@ -148,7 +144,7 @@ func (d *Driver) LoadAll(db, table string) ([]sql.Index, error) {
 		root    = filepath.Join(d.root, db, table)
 	)
 
-	holder := d.holder(db, table)
+	holder := pilosa.NewHolder()
 	holder.Path = d.pilosaDirPath(db, table)
 	if _, err := os.Stat(holder.Path); err != nil {
 		if os.IsNotExist(err) {
@@ -172,7 +168,7 @@ func (d *Driver) LoadAll(db, table string) ([]sql.Index, error) {
 	}
 	for _, info := range dirs {
 		if info.IsDir() && !strings.HasPrefix(info.Name(), ".") {
-			idx, err := d.loadIndex(db, table, info.Name())
+			idx, err := d.loadIndex(holder, db, table, info.Name())
 			if err != nil {
 				if !errCorruptedIndex.Is(err) {
 					errors = append(errors, err.Error())
@@ -190,26 +186,11 @@ func (d *Driver) LoadAll(db, table string) ([]sql.Index, error) {
 	return indexes, nil
 }
 
-func (d *Driver) holder(db, table string) *pilosa.Holder {
-	tables, ok := d.holders[db]
-	if !ok {
-		tables = make(tableMap)
-		d.holders[db] = tables
-	}
-
-	holder, ok := tables[table]
-	if !ok {
-		holder = pilosa.NewHolder()
-		tables[table] = holder
-		d.holders[db] = tables
-	}
-
-	return holder
-}
-
-func (d *Driver) loadIndex(db, table, id string) (*pilosaIndex, error) {
+func (d *Driver) loadIndex(
+	holder *pilosa.Holder,
+	db, table, id string,
+) (*pilosaIndex, error) {
 	name := indexName(db, table)
-	holder := d.holder(db, table)
 	idx := holder.Index(name)
 	if idx == nil {
 		return nil, errLoadingIndex.New(name)
@@ -269,6 +250,7 @@ func (d *Driver) savePartition(
 	)
 	for i, e := range idx.Expressions() {
 		name := fieldName(idx.ID(), e, p)
+		println("create field", d, idx.ID(), e, name, string(p.Key()))
 		pilosaIndex.DeleteField(name)
 		field, err := pilosaIndex.CreateField(name, pilosa.OptFieldTypeDefault())
 		if err != nil {
